@@ -1,6 +1,18 @@
 # rest-api-dispatcher
 A simple util helps you avoid 'Access-Control-Allow-Origin' problem.
 
+```js
+/* get page from localhost:8080 */
+// cause problem
+$.get('http://localhost:8081/user/1',function (r) {
+    console.log(r);
+});
+
+// perfect :)
+$.get('http://localhost:8080/api/user/1',function (r) {
+    console.log(r);
+});
+```
 
 ## install
 ```sh
