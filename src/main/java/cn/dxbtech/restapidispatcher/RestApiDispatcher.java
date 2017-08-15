@@ -71,12 +71,12 @@ public class RestApiDispatcher extends HttpServlet {
 
         hostMapping = new LinkedHashMap<String, String>();
         for (HostMapping mapping : hostMappings) {
-            for (String prefix : mapping.getPrefixes()) {
-                hostMapping.put(prefix, mapping.getUrl());
-                logger.info("Api mapping: [/{}]\t{} -> {}", mapping.getName(), prefix, mapping.getUrl());
+            if (hostMapping.get(mapping.getPrefix()) != null) {
+                throw new ServletException("Duplicated prefix[" + mapping.getPrefix() + "]: [" + mapping.getUrl() + "] has same prefix with [" + hostMapping.get(mapping.getPrefix()) + "] ");
             }
+            hostMapping.put(mapping.getPrefix(), mapping.getUrl());
+            logger.info("Api mapping: [/{}]\t{} -> {}", mapping.getName(), mapping.getPrefix(), mapping.getUrl());
         }
-
 
     }
 
@@ -96,7 +96,7 @@ public class RestApiDispatcher extends HttpServlet {
         }
         if (prefix == null) return null;
         //根据前缀获取主机
-        String url = hostMapping.get(prefix) + requestURI.substring((request.getContextPath() + apiPrefix).length());
+        String url = hostMapping.get(prefix) + requestURI.substring((request.getContextPath() + apiPrefix + '/' + prefix).length());
         if (!StringUtils.isEmpty(request.getQueryString())) {
             url = url + "?" + request.getQueryString();
         }

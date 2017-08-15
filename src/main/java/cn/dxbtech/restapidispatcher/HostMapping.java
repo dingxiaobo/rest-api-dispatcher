@@ -1,20 +1,17 @@
 package cn.dxbtech.restapidispatcher;
 
-import java.util.Arrays;
-import java.util.List;
-
 public class HostMapping {
     private String name;
     private String url;
-    private List<String> prefixes;
+    private String prefix;
 
     public HostMapping() {
     }
 
-    public HostMapping(String name, String url, String... prefixes) {
+    public HostMapping(String name, String url, String prefix) {
         this.name = name;
         this.url = url;
-        this.prefixes = Arrays.asList(prefixes);
+        this.prefix = prefix;
     }
 
     public String getName() {
@@ -33,11 +30,11 @@ public class HostMapping {
         this.url = url;
     }
 
-    public List<String> getPrefixes() {
-        return prefixes;
+    public String getPrefix() {
+        return prefix;
     }
 
-    public void setPrefixes(List<String> prefixes) {
-        this.prefixes = prefixes;
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
     }
 }
