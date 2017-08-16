@@ -1,9 +1,15 @@
 package cn.dxbtech.restapidispatcher;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -11,7 +17,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -19,6 +24,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.*;
 
@@ -28,13 +34,13 @@ public class RestApiDispatcher extends HttpServlet {
     private List<HostMapping> hostMappings;
 
     private final Logger logger = LoggerFactory.getLogger(getClass().getSimpleName());
-    private final RestTemplate template;
-    private Map<String, String> hostMapping;
+    private final LocalRestTemplate template;
+    private Map<String, HostMapping> hostMapping;
 
     public RestApiDispatcher() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setReadTimeout(5000);
-        template = new RestTemplate(requestFactory);
+        template = new LocalRestTemplate(requestFactory);
     }
 
     public RestApiDispatcher(String tokenKey, String apiPrefix, HostMapping... hostMappings) {
@@ -62,20 +68,49 @@ public class RestApiDispatcher extends HttpServlet {
                 tokenKey = initParameterTokenKey;
             }
             try {
-                hostMappings = new ObjectMapper().readValue(getInitParameter("hosts"), new TypeReference<List<HostMapping>>() {
-                });
+                TypeReference<List<HostMapping>> typeRef = new TypeReference<List<HostMapping>>() {
+                };
+                JsonFactory jsonFactory = new JsonFactory();
+                jsonFactory.enable(JsonParser.Feature.ALLOW_COMMENTS);
+                ObjectMapper objectMapper = new ObjectMapper(jsonFactory);
+                try {
+                    String hostsJson = getInitParameter("hosts");
+                    if (StringUtils.isEmpty(hostsJson)) {
+                        throw new JsonParseException(null, "Servlet init param [hosts] not found.");
+                    }
+                    hostMappings = objectMapper.readValue(hostsJson, typeRef);
+                } catch (JsonParseException e) {
+                    //json解析失败 不符合json格式 从配置文件中读取json
+                    ResourcePatternResolver resourcePatternResolver = new PathMatchingResourcePatternResolver();
+                    String hostsJsonConfigFileLocation = getInitParameter("hosts-config-location");
+                    if (StringUtils.isEmpty(hostsJsonConfigFileLocation)) {
+                        //servlet init param中找不到hosts-config-location
+                        throw new IOException("Read [hosts] and [hosts-config-location] from servlet init param failed. [hosts-config-location] not found.", e);
+                    }
+                    for (Resource hostsConfigLocation : resourcePatternResolver.getResources(hostsJsonConfigFileLocation)) {
+                        InputStream in = hostsConfigLocation.getInputStream();
+                        StringBuilder stringBuilder = new StringBuilder();
+                        byte[] b = new byte[4096];
+                        for (int n; (n = in.read(b)) != -1; ) {
+                            stringBuilder.append(new String(b, 0, n));
+                        }
+                        List<HostMapping> hms = objectMapper.readValue(stringBuilder.toString(), typeRef);
+                        if (hostMappings == null) hostMappings = new LinkedList<HostMapping>();
+                        hostMappings.addAll(hms);
+                    }
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
 
-        hostMapping = new LinkedHashMap<String, String>();
+        hostMapping = new LinkedHashMap<String, HostMapping>();
         for (HostMapping mapping : hostMappings) {
             if (hostMapping.get(mapping.getPrefix()) != null) {
-                throw new ServletException("Duplicated prefix[" + mapping.getPrefix() + "]: [" + mapping.getUrl() + "] has same prefix with [" + hostMapping.get(mapping.getPrefix()) + "] ");
+                throw new ServletException("Duplicated prefix[" + mapping.getPrefix() + "]: [" + mapping + "] has same prefix with [" + hostMapping.get(mapping.getPrefix()) + "] ");
             }
-            hostMapping.put(mapping.getPrefix(), mapping.getUrl());
-            logger.info("Api mapping: [/{}]\t{} -> {}", mapping.getName(), mapping.getPrefix(), mapping.getUrl());
+            hostMapping.put(mapping.getPrefix(), mapping);
+            logger.info("Api mapping{}: [/{}]\t{} -> {}", mapping.isDebug() ? "(local DEBUG)" : "", mapping.getName(), mapping.getPrefix(), mapping.getUrl());
         }
 
     }
@@ -96,7 +131,16 @@ public class RestApiDispatcher extends HttpServlet {
         }
         if (prefix == null) return null;
         //根据前缀获取主机
-        String url = hostMapping.get(prefix) + requestURI.substring((request.getContextPath() + apiPrefix + '/' + prefix).length());
+        HostMapping hostMapping = this.hostMapping.get(prefix);
+        if (hostMapping == null) {
+            return null;
+        }
+        if (hostMapping.isDebug()) {
+            //请求json
+            return requestURI;
+        }
+
+        String url = hostMapping.getUrl() + requestURI.substring((request.getContextPath() + apiPrefix + '/' + prefix).length());
         if (!StringUtils.isEmpty(request.getQueryString())) {
             url = url + "?" + request.getQueryString();
         }
@@ -182,9 +226,16 @@ public class RestApiDispatcher extends HttpServlet {
             while ((str = br.readLine()) != null) {
                 wholeStr.append(str);
             }
-
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            try {
+                if (br != null) {
+                    br.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
         return wholeStr.toString();
     }

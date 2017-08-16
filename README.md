@@ -41,6 +41,7 @@ $ mvn source:jar install
         <param-value>/api</param-value>
     </init-param>
     <init-param>
+    <!--default is "token"-->
         <param-name>token-key</param-name>
         <param-value>token</param-value>
     </init-param>
@@ -49,6 +50,12 @@ $ mvn source:jar install
         <param-value>
             [{"name":"testweb8081","url":"http://localhost:8081","prefix":"1"},{"name":"testweb8082","url":"http://localhost:8082","prefix":"2"}]
         </param-value>
+    </init-param>
+    <init-param>
+    <!--Read from json file-->
+    <!--Remove [hosts] tag if you need use [hosts-config-location]-->
+        <param-name>hosts-config-location</param-name>
+        <param-value>classpath:hosts.json</param-value>
     </init-param>
     <load-on-startup>1000</load-on-startup>
 </servlet>
@@ -74,7 +81,7 @@ public class App{
        String apiPrefix = "/api";
 
        ServletRegistrationBean registration = new ServletRegistrationBean(new RestApiDispatcher(apiPrefix,
-               new HostMapping("testweb8081", "http://localhost:8081", "1"),
+               new HostMapping("testweb8081", "http://localhost:8081", "1", true),
                new HostMapping("testweb8082", "http://localhost:8082", "2")
        ));
        registration.setLoadOnStartup(1000);
@@ -89,3 +96,8 @@ public class App{
 
 ### 1.1
 - 唯一前缀标识不同服务
+
+### 1.2 
+- 支持debug模式，在该模式下请求结果从本地获取
+- json不存在时，读取txt，方便非json格式的内容读取。并且json/txt支持注释
+- 支持用.json文件配置hosts
