@@ -24,7 +24,7 @@ $ mvn source:jar install
 <dependency>
     <groupId>cn.dxbtech</groupId>
     <artifactId>rest-api-dispatcher</artifactId>
-    <version>1.1</version>
+    <version>1.2</version>
 </dependency>
 ```
 
